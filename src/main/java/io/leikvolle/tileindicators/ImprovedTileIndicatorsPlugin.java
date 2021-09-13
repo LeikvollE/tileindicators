@@ -42,7 +42,7 @@ import net.runelite.client.ui.overlay.OverlayManager;
 
 @PluginDescriptor(
 		name = "Improved Tile Indicators",
-		description = "Highlight the tile you are currently moving to",
+		description = "An improved version of the tile indicators plugin",
 		tags = {"highlight", "overlay"},
 		enabledByDefault = true
 )
