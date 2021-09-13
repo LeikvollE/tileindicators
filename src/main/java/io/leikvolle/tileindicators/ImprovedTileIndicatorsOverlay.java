@@ -123,7 +123,6 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
             renderTile(g, playerPosLocal, config.highlightCurrentColor(), config.currentTileBorderWidth(), config.currentTileBelowPlayer());
         }
         graphics.drawImage(indicatorRender, 0, 0, null);
-        log.info(System.currentTimeMillis()-before + " " + 1000.0/(System.currentTimeMillis()-before) + "");
         return null;
     }
 
