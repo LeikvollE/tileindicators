@@ -47,19 +47,16 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
 {
     private final Client client;
     private final ImprovedTileIndicatorsConfig config;
-    private final ImprovedTileIndicatorsPlugin plugin;
     private final BufferedImage ARROW_ICON;
 
-    BufferedImage indicatorRender;
     private LocalPoint lastDestination;
     private int gameCycle;
 
     @Inject
-    private ImprovedTileIndicatorsOverlay(Client client, ImprovedTileIndicatorsPlugin plugin, ImprovedTileIndicatorsConfig config)
+    private ImprovedTileIndicatorsOverlay(Client client, ImprovedTileIndicatorsConfig config)
     {
         this.client = client;
         this.config = config;
-        this.plugin = plugin;
         setPosition(OverlayPosition.DYNAMIC);
         setLayer(OverlayLayer.ABOVE_SCENE);
         setPriority(OverlayPriority.MED);
@@ -70,21 +67,12 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        long before = System.currentTimeMillis();
-        indicatorRender = new BufferedImage(client.getCanvasWidth(), client.getCanvasHeight(), BufferedImage.TYPE_4BYTE_ABGR);
-        Graphics2D g = indicatorRender.createGraphics();
-        g.setRenderingHint(
-                RenderingHints.KEY_ANTIALIASING,
-                RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setRenderingHint(
-                RenderingHints.KEY_TEXT_ANTIALIASING,
-                RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         if (config.highlightHoveredTile())
         {
             // If we have tile "selected" render it
             if (client.getSelectedSceneTile() != null)
             {
-                renderTile(g, client.getSelectedSceneTile().getLocalLocation(), config.highlightHoveredColor(), config.hoveredTileBorderWidth(), false);
+                renderTile(graphics, client.getSelectedSceneTile().getLocalLocation(), config.highlightHoveredColor(), config.hoveredTileBorderWidth(), false);
             }
         }
 
@@ -98,10 +86,10 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
             switch (config.highlightDestinationStyle())
             {
                 case RS3:
-                    renderRS3Tile(g, client.getLocalDestinationLocation(), config.highlightDestinationColor());
+                    renderRS3Tile(graphics, client.getLocalDestinationLocation(), config.highlightDestinationColor());
                     break;
                 case DEFAULT:
-                    renderTile(g, client.getLocalDestinationLocation(), config.highlightDestinationColor(), config.destinationTileBorderWidth(), false);
+                    renderTile(graphics, client.getLocalDestinationLocation(), config.highlightDestinationColor(), config.destinationTileBorderWidth(), false);
                     break;
             }
         }
@@ -120,9 +108,8 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
                 return null;
             }
 
-            renderTile(g, playerPosLocal, config.highlightCurrentColor(), config.currentTileBorderWidth(), config.currentTileBelowPlayer());
+            renderTile(graphics, playerPosLocal, config.highlightCurrentColor(), config.currentTileBorderWidth(), config.currentTileBelowPlayer());
         }
-        graphics.drawImage(indicatorRender, 0, 0, null);
         return null;
     }
 
@@ -135,15 +122,28 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
 
         final Polygon poly = Perspective.getCanvasTilePoly(client, dest);
 
+
         if (poly == null)
         {
             return;
         }
 
-        OverlayUtil.renderPolygon(graphics, poly, color, new BasicStroke((float) borderWidth));
         if (removePlayer)
         {
-            removeActor(graphics, client.getLocalPlayer(), poly);
+            Rectangle bounds = poly.getBounds();
+            BufferedImage tileImage = new BufferedImage(bounds.width, bounds.height, BufferedImage.TYPE_4BYTE_ABGR);
+            poly.translate(-bounds.x, -bounds.y);
+            Graphics2D g = tileImage.createGraphics();
+            g.setRenderingHint(
+                    RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            OverlayUtil.renderPolygon(g, poly, color, new BasicStroke((float) borderWidth));
+            removeActor(g, client.getLocalPlayer(), bounds);
+            graphics.drawImage(tileImage, bounds.x, bounds.y, null);
+        }
+        else
+        {
+            OverlayUtil.renderPolygon(graphics, poly, color, new BasicStroke((float) borderWidth));
         }
     }
 
@@ -216,14 +216,11 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         return poly;
     }
 
-    private void removeActor(final Graphics2D graphics, final Actor actor, Polygon poly)
+    private void removeActor(final Graphics2D graphics, final Actor actor, Rectangle bounds)
     {
         graphics.setRenderingHint(
                 RenderingHints.KEY_ANTIALIASING,
                 RenderingHints.VALUE_ANTIALIAS_OFF);
-        graphics.setRenderingHint(
-                RenderingHints.KEY_TEXT_ANTIALIASING,
-                RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
         Model model = actor.getModel();
         int vCount = model.getVerticesCount();
         int[] x3d = model.getVerticesX();
@@ -250,13 +247,14 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         graphics.setColor(Color.WHITE);
         for (int i = 0; i < tCount; i++) {
             // Cull tris facing away from the camera and tris outside of the tile.
-            if (getTriDirection(x2d[tx[i]], y2d[tx[i]], x2d[ty[i]], y2d[ty[i]], x2d[tz[i]], y2d[tz[i]]) >= 0 || (!poly.contains(x2d[tx[i]], y2d[tx[i]]) && !poly.contains(x2d[ty[i]], y2d[ty[i]]) && !poly.contains(x2d[tz[i]], y2d[tz[i]]))) {
+            if (getTriDirection(x2d[tx[i]], y2d[tx[i]], x2d[ty[i]], y2d[ty[i]], x2d[tz[i]], y2d[tz[i]]) >= 0 || (!bounds.contains(x2d[tx[i]], y2d[tx[i]]) && !bounds.contains(x2d[ty[i]], y2d[ty[i]]) && !bounds.contains(x2d[tz[i]], y2d[tz[i]]))) {
                 continue;
             }
-            int shift = 0; // Potentially used in the future for shifting pixels to account for gpu plugin.
+            int xShift = -bounds.x;
+            int yShift = -bounds.y;
             Polygon p = new Polygon(
-                    new int[]{x2d[tx[i]]+shift,x2d[ty[i]]+shift,x2d[tz[i]]+shift},
-                    new int[]{y2d[tx[i]],y2d[ty[i]],y2d[tz[i]]},
+                    new int[]{x2d[tx[i]]+xShift,x2d[ty[i]]+xShift,x2d[tz[i]]+xShift},
+                    new int[]{y2d[tx[i]]+yShift,y2d[ty[i]]+yShift,y2d[tz[i]]+yShift},
                     3);
             graphics.fill(p);
 
@@ -265,9 +263,6 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         graphics.setRenderingHint(
                 RenderingHints.KEY_ANTIALIASING,
                 RenderingHints.VALUE_ANTIALIAS_ON);
-        graphics.setRenderingHint(
-                RenderingHints.KEY_TEXT_ANTIALIASING,
-                RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
     }
 
     private int getTriDirection(int x1, int y1, int x2, int y2, int x3, int y3) {
