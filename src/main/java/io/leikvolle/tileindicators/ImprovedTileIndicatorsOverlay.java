@@ -130,16 +130,16 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
 
         if (removePlayer)
         {
-            Rectangle bounds = poly.getBounds();
-            BufferedImage tileImage = new BufferedImage(bounds.width, bounds.height, BufferedImage.TYPE_4BYTE_ABGR);
-            poly.translate(-bounds.x, -bounds.y);
-            Graphics2D g = tileImage.createGraphics();
-            g.setRenderingHint(
-                    RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-            OverlayUtil.renderPolygon(g, poly, color, new BasicStroke((float) borderWidth));
-            removeActor(g, client.getLocalPlayer(), bounds);
-            graphics.drawImage(tileImage, bounds.x, bounds.y, null);
+            //Rectangle bounds = poly.getBounds();
+            //BufferedImage tileImage = new BufferedImage(bounds.width, bounds.height, BufferedImage.TYPE_4BYTE_ABGR);
+            //poly.translate(-bounds.x, -bounds.y);
+            //Graphics2D g = tileImage.createGraphics();
+            //g.setRenderingHint(
+            //        RenderingHints.KEY_ANTIALIASING,
+            //        RenderingHints.VALUE_ANTIALIAS_ON);
+            OverlayUtil.renderPolygon(graphics, poly, color, new BasicStroke((float) borderWidth));
+            removeActor(graphics, client.getLocalPlayer(), null);
+            //graphics.drawImage(tileImage, bounds.x, bounds.y, null);
         }
         else
         {
@@ -218,6 +218,7 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
 
     private void removeActor(final Graphics2D graphics, final Actor actor, Rectangle bounds)
     {
+        Object origAA = graphics.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
         graphics.setRenderingHint(
                 RenderingHints.KEY_ANTIALIASING,
                 RenderingHints.VALUE_ANTIALIAS_OFF);
@@ -233,7 +234,7 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         int localX = actor.getLocalLocation().getX();
         int localY = actor.getLocalLocation().getY();
         int localZ = Perspective.getTileHeight(client, client.getLocalPlayer().getLocalLocation(), client.getPlane());
-        int rotation = actor.getOrientation();
+        int rotation = actor.getCurrentOrientation();
 
         Perspective.modelToCanvas(client, vCount, localX, localY, localZ, rotation, x3d, z3d, y3d, x2d, y2d);
 
@@ -247,11 +248,11 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         graphics.setColor(Color.WHITE);
         for (int i = 0; i < tCount; i++) {
             // Cull tris facing away from the camera and tris outside of the tile.
-            if (getTriDirection(x2d[tx[i]], y2d[tx[i]], x2d[ty[i]], y2d[ty[i]], x2d[tz[i]], y2d[tz[i]]) >= 0 || (!bounds.contains(x2d[tx[i]], y2d[tx[i]]) && !bounds.contains(x2d[ty[i]], y2d[ty[i]]) && !bounds.contains(x2d[tz[i]], y2d[tz[i]]))) {
+            if (getTriDirection(x2d[tx[i]], y2d[tx[i]], x2d[ty[i]], y2d[ty[i]], x2d[tz[i]], y2d[tz[i]]) >= 0){// || (!bounds.contains(x2d[tx[i]], y2d[tx[i]]) && !bounds.contains(x2d[ty[i]], y2d[ty[i]]) && !bounds.contains(x2d[tz[i]], y2d[tz[i]]))) {
                 continue;
             }
-            int xShift = -bounds.x;
-            int yShift = -bounds.y;
+            int xShift = 0;//-bounds.x;
+            int yShift = 0;//-bounds.y;
             Polygon p = new Polygon(
                     new int[]{x2d[tx[i]]+xShift,x2d[ty[i]]+xShift,x2d[tz[i]]+xShift},
                     new int[]{y2d[tx[i]]+yShift,y2d[ty[i]]+yShift,y2d[tz[i]]+yShift},
@@ -262,7 +263,7 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         graphics.setComposite(orig);
         graphics.setRenderingHint(
                 RenderingHints.KEY_ANTIALIASING,
-                RenderingHints.VALUE_ANTIALIAS_ON);
+                origAA);
     }
 
     private int getTriDirection(int x1, int y1, int x2, int y2, int x3, int y3) {
