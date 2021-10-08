@@ -72,7 +72,7 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
             // If we have tile "selected" render it
             if (client.getSelectedSceneTile() != null)
             {
-                renderTile(graphics, client.getSelectedSceneTile().getLocalLocation(), config.highlightHoveredColor(), config.hoveredTileBorderWidth(), false);
+                renderTile(graphics, client.getSelectedSceneTile().getLocalLocation(), config.highlightHoveredColor(), config.hoveredTileBorderWidth());
             }
         }
 
@@ -86,10 +86,13 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
             switch (config.highlightDestinationStyle())
             {
                 case RS3:
-                    renderRS3Tile(graphics, client.getLocalDestinationLocation(), config.highlightDestinationColor());
+                    renderRS3Tile(graphics, client.getLocalDestinationLocation(), config.highlightDestinationColor(), true);
+                    break;
+                case RS3_NO_ARROW:
+                    renderRS3Tile(graphics, client.getLocalDestinationLocation(), config.highlightDestinationColor(), false);
                     break;
                 case DEFAULT:
-                    renderTile(graphics, client.getLocalDestinationLocation(), config.highlightDestinationColor(), config.destinationTileBorderWidth(), false);
+                    renderTile(graphics, client.getLocalDestinationLocation(), config.highlightDestinationColor(), config.destinationTileBorderWidth());
                     break;
             }
         }
@@ -108,12 +111,17 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
                 return null;
             }
 
-            renderTile(graphics, playerPosLocal, config.highlightCurrentColor(), config.currentTileBorderWidth(), config.currentTileBelowPlayer());
+            renderTile(graphics, playerPosLocal, config.highlightCurrentColor(), config.currentTileBorderWidth());
+        }
+
+        if (config.currentTileBelowPlayer() && client.isGpu())
+        {
+            removeActor(graphics, client.getLocalPlayer());
         }
         return null;
     }
 
-    private void renderTile(final Graphics2D graphics, final LocalPoint dest, final Color color, final double borderWidth, final boolean removePlayer)
+    private void renderTile(final Graphics2D graphics, final LocalPoint dest, final Color color, final double borderWidth)
     {
         if (dest == null)
         {
@@ -128,26 +136,11 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
             return;
         }
 
-        if (removePlayer)
-        {
-            //Rectangle bounds = poly.getBounds();
-            //BufferedImage tileImage = new BufferedImage(bounds.width, bounds.height, BufferedImage.TYPE_4BYTE_ABGR);
-            //poly.translate(-bounds.x, -bounds.y);
-            //Graphics2D g = tileImage.createGraphics();
-            //g.setRenderingHint(
-            //        RenderingHints.KEY_ANTIALIASING,
-            //        RenderingHints.VALUE_ANTIALIAS_ON);
-            OverlayUtil.renderPolygon(graphics, poly, color, new BasicStroke((float) borderWidth));
-            removeActor(graphics, client.getLocalPlayer(), null);
-            //graphics.drawImage(tileImage, bounds.x, bounds.y, null);
-        }
-        else
-        {
-            OverlayUtil.renderPolygon(graphics, poly, color, new BasicStroke((float) borderWidth));
-        }
+        OverlayUtil.renderPolygon(graphics, poly, color, new BasicStroke((float) borderWidth));
+
     }
 
-    private void renderRS3Tile(final Graphics2D graphics, final LocalPoint dest, final Color color)
+    private void renderRS3Tile(final Graphics2D graphics, final LocalPoint dest, final Color color, boolean drawArrow)
     {
         if (dest == null)
         {
@@ -171,11 +164,11 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
             graphics.setStroke(originalStroke);
         }
 
-        if (canvasLoc != null)
+        if (canvasLoc != null && drawArrow && shadow != null)
         {
             // TODO: improve scale as you zoom out
             double imageScale = 0.8*Math.min(client.get3dZoom()/500.0, 1);
-            graphics.drawImage(ARROW_ICON, canvasLoc.getX(), canvasLoc.getY(), (int)(ARROW_ICON.getWidth()*imageScale),(int)(ARROW_ICON.getHeight()*imageScale), null);
+            graphics.drawImage(ARROW_ICON, (int)(shadow.getBounds().width/2+shadow.getBounds().x-ARROW_ICON.getWidth()*imageScale/2), canvasLoc.getY(), (int)(ARROW_ICON.getWidth()*imageScale),(int)(ARROW_ICON.getHeight()*imageScale), null);
         }
 
     }
@@ -216,7 +209,7 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         return poly;
     }
 
-    private void removeActor(final Graphics2D graphics, final Actor actor, Rectangle bounds)
+    private void removeActor(final Graphics2D graphics, final Actor actor)
     {
         Object origAA = graphics.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
         graphics.setRenderingHint(
@@ -247,15 +240,13 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         graphics.setComposite(AlphaComposite.Clear);
         graphics.setColor(Color.WHITE);
         for (int i = 0; i < tCount; i++) {
-            // Cull tris facing away from the camera and tris outside of the tile.
-            if (getTriDirection(x2d[tx[i]], y2d[tx[i]], x2d[ty[i]], y2d[ty[i]], x2d[tz[i]], y2d[tz[i]]) >= 0){// || (!bounds.contains(x2d[tx[i]], y2d[tx[i]]) && !bounds.contains(x2d[ty[i]], y2d[ty[i]]) && !bounds.contains(x2d[tz[i]], y2d[tz[i]]))) {
+            // Cull tris facing away from the camera
+            if (getTriDirection(x2d[tx[i]], y2d[tx[i]], x2d[ty[i]], y2d[ty[i]], x2d[tz[i]], y2d[tz[i]]) >= 0){
                 continue;
             }
-            int xShift = 0;//-bounds.x;
-            int yShift = 0;//-bounds.y;
             Polygon p = new Polygon(
-                    new int[]{x2d[tx[i]]+xShift,x2d[ty[i]]+xShift,x2d[tz[i]]+xShift},
-                    new int[]{y2d[tx[i]]+yShift,y2d[ty[i]]+yShift,y2d[tz[i]]+yShift},
+                    new int[]{x2d[tx[i]],x2d[ty[i]],x2d[tz[i]]},
+                    new int[]{y2d[tx[i]],y2d[ty[i]],y2d[tz[i]]},
                     3);
             graphics.fill(p);
 

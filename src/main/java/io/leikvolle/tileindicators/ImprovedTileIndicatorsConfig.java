@@ -149,8 +149,8 @@ public interface ImprovedTileIndicatorsConfig extends Config
 
 	@ConfigItem(
 			keyName = "currentTileBelowPlayer",
-			name = "Draw below player",
-			description = "Draws the current true tile below the player",
+			name = "Draw overlays below player",
+			description = "Requires GPU. Draws overlays below the player",
 			position = 11
 	)
 	default boolean currentTileBelowPlayer()
