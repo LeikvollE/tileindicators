@@ -25,7 +25,6 @@
  */
 package io.leikvolle.tileindicators;
 
-import com.google.common.collect.ImmutableSet;
 import com.google.inject.Provides;
 import javax.inject.Inject;
 
@@ -73,7 +72,7 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	private ClientThread clientThread;
 
 	@Getter(AccessLevel.PACKAGE)
-	private Set<NPC> onTopNpcs = new HashSet<>();
+	private final Set<NPC> onTopNpcs = new HashSet<>();
 	private List<String> onTopNPCNames = new ArrayList<>();
 
 	private static final String DRAW_ABOVE = "Draw-Above";
@@ -87,14 +86,14 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	}
 
 	@Override
-	protected void startUp() throws Exception
+	protected void startUp()
 	{
 		overlayManager.add(overlay);
 		clientThread.invoke(this::rebuild);
 	}
 
 	@Override
-	protected void shutDown() throws Exception
+	protected void shutDown()
 	{
 		overlayManager.remove(overlay);
 	}
@@ -268,7 +267,6 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 			if (onTopMatchesNPCName(npcName))
 			{
 				onTopNpcs.add(npc);
-				continue;
 			}
 		}
 	}
