@@ -25,20 +25,29 @@
  */
 package io.leikvolle.tileindicators;
 
-import com.google.common.eventbus.Subscribe;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Provides;
 import javax.inject.Inject;
 
 import lombok.AccessLevel;
 import lombok.Getter;
-import lombok.experimental.Accessors;
-import net.runelite.api.Client;
-import net.runelite.api.MenuAction;
-import net.runelite.api.events.MenuOptionClicked;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.*;
+import net.runelite.api.events.*;
+
+import static net.runelite.api.MenuAction.MENU_ACTION_DEPRIORITIZE_OFFSET;
+
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.Text;
+import net.runelite.client.util.WildcardMatcher;
+
+import java.util.*;
 
 @PluginDescriptor(
 		name = "Improved Tile Indicators",
@@ -46,6 +55,7 @@ import net.runelite.client.ui.overlay.OverlayManager;
 		tags = {"highlight", "overlay"},
 		enabledByDefault = true
 )
+@Slf4j
 public class ImprovedTileIndicatorsPlugin extends Plugin
 {
 	@Inject
@@ -54,8 +64,21 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	@Inject
 	private ImprovedTileIndicatorsOverlay overlay;
 
+	@Inject ImprovedTileIndicatorsConfig config;
+
 	@Inject
 	private Client client;
+
+	@Inject
+	private ClientThread clientThread;
+
+	@Getter(AccessLevel.PACKAGE)
+	private Set<NPC> onTopNpcs = new HashSet<>();
+	private List<String> onTopNPCNames = new ArrayList<>();
+
+	private static final String DRAW_ABOVE = "Draw-Above";
+	private static final String DRAW_BELOW = "Draw-Below";
+	private static final String UNTAG_ALL = "Un-tag-All";
 
 	@Provides
 	ImprovedTileIndicatorsConfig provideConfig(ConfigManager configManager)
@@ -67,6 +90,7 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	protected void startUp() throws Exception
 	{
 		overlayManager.add(overlay);
+		clientThread.invoke(this::rebuild);
 	}
 
 	@Override
@@ -74,4 +98,192 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	{
 		overlayManager.remove(overlay);
 	}
+
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged event)
+	{
+		if (event.getGameState() == GameState.LOGIN_SCREEN ||
+				event.getGameState() == GameState.HOPPING)
+		{
+			onTopNpcs.clear();
+		}
+	}
+
+	@Subscribe
+	public void onConfigChanged(ConfigChanged configChanged)
+	{
+		if (!configChanged.getGroup().equals("improvedtileindicators"))
+		{
+			return;
+		}
+
+		clientThread.invoke(this::rebuild);
+	}
+
+	@Subscribe
+	public void onNpcSpawned(NpcSpawned npcSpawned)
+	{
+		final NPC npc = npcSpawned.getNpc();
+		final String npcName = npc.getName();
+
+		if (npcName == null)
+		{
+			return;
+		}
+
+		if (onTopMatchesNPCName(npcName))
+		{
+			onTopNpcs.add(npc);
+		}
+	}
+
+	@Subscribe
+	public void onNpcDespawned(NpcDespawned npcDespawned)
+	{
+		final NPC npc = npcDespawned.getNpc();
+		onTopNpcs.remove(npc);
+	}
+
+
+	@Subscribe
+	public void onMenuEntryAdded(MenuEntryAdded event)
+	{
+		int type = event.getType();
+
+		if (type >= MENU_ACTION_DEPRIORITIZE_OFFSET)
+		{
+			type -= MENU_ACTION_DEPRIORITIZE_OFFSET;
+		}
+
+		final MenuAction menuAction = MenuAction.of(type);
+
+		if (menuAction == MenuAction.EXAMINE_NPC && client.isKeyPressed(KeyCode.KC_SHIFT) && config.overlaysBelowNPCs())
+		{
+			// Add tag and tag-all options
+			final int id = event.getIdentifier();
+			final NPC[] cachedNPCs = client.getCachedNPCs();
+			final NPC npc = cachedNPCs[id];
+
+			if (npc == null || npc.getName() == null)
+			{
+				return;
+			}
+
+			final String npcName = npc.getName();
+			boolean matchesList = onTopNPCNames.stream()
+					.filter(highlight -> !highlight.equalsIgnoreCase(npcName))
+					.anyMatch(highlight -> WildcardMatcher.matches(highlight, npcName));
+
+			MenuEntry[] menuEntries = client.getMenuEntries();
+
+			// Only show draw options to npcs not affected by a wildcard entry, as wildcards will not be removed by menu options
+			if (!matchesList)
+			{
+				menuEntries = Arrays.copyOf(menuEntries, menuEntries.length + 1);
+				final MenuEntry tagAllEntry = menuEntries[menuEntries.length - 1] = new MenuEntry();
+				tagAllEntry.setOption(onTopNPCNames.stream().anyMatch(npcName::equalsIgnoreCase) ? DRAW_BELOW : DRAW_ABOVE);
+				tagAllEntry.setTarget(event.getTarget());
+				tagAllEntry.setParam0(event.getActionParam0());
+				tagAllEntry.setParam1(event.getActionParam1());
+				tagAllEntry.setIdentifier(event.getIdentifier());
+				tagAllEntry.setType(MenuAction.RUNELITE.getId());
+			}
+
+			client.setMenuEntries(menuEntries);
+		}
+	}
+
+	@Subscribe
+	public void onMenuOptionClicked(MenuOptionClicked click)
+	{
+		if (click.getMenuAction() != MenuAction.RUNELITE ||
+				!(click.getMenuOption().equals(DRAW_BELOW) || click.getMenuOption().equals(DRAW_ABOVE) || click.getMenuOption().equals(UNTAG_ALL)))
+		{
+			return;
+		}
+		final int id = click.getId();
+		final NPC[] cachedNPCs = client.getCachedNPCs();
+		final NPC npc = cachedNPCs[id];
+
+		if (npc == null || npc.getName() == null)
+		{
+			return;
+		}
+
+		final String name = npc.getName();
+
+		// Remove if we are untagging all, stops confusion
+		if (click.getMenuOption().equals(UNTAG_ALL) && !onTopNPCNames.contains(name)) return;
+		// this trips a config change which triggers the overlay rebuild
+		updateNpcsToDrawAbove(name);
+
+		click.consume();
+	}
+
+	private void updateNpcsToDrawAbove(String npc)
+	{
+		final List<String> highlightedNpcs = new ArrayList<>(onTopNPCNames);
+
+		if (!highlightedNpcs.removeIf(npc::equalsIgnoreCase))
+		{
+			highlightedNpcs.add(npc);
+		}
+
+		// this triggers the config change event and rebuilds npcs
+		config.setTopNPCs(Text.toCSV(highlightedNpcs));
+	}
+
+	List<String> getTopNPCs()
+	{
+		final String configNpcs = config.getTopNPCs();
+
+		if (configNpcs.isEmpty())
+		{
+			return Collections.emptyList();
+		}
+
+		return Text.fromCSV(configNpcs);
+	}
+
+	void rebuild()
+	{
+		onTopNPCNames = getTopNPCs();
+		onTopNpcs.clear();
+
+		if (client.getGameState() != GameState.LOGGED_IN &&
+				client.getGameState() != GameState.LOADING)
+		{
+			return;
+		}
+
+		for (NPC npc : client.getNpcs())
+		{
+			final String npcName = npc.getName();
+
+			if (npcName == null)
+			{
+				continue;
+			}
+
+			if (onTopMatchesNPCName(npcName))
+			{
+				onTopNpcs.add(npc);
+				continue;
+			}
+		}
+	}
+
+	private boolean onTopMatchesNPCName(String npcName)
+	{
+		for (String matching : onTopNPCNames)
+		{
+			if (WildcardMatcher.matches(matching, npcName))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 }

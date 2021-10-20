@@ -49,6 +49,9 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
     private final ImprovedTileIndicatorsConfig config;
     private final BufferedImage ARROW_ICON;
 
+    @Inject
+    private ImprovedTileIndicatorsPlugin plugin;
+
     private LocalPoint lastDestination;
     private int gameCycle;
 
@@ -114,9 +117,16 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
             renderTile(graphics, playerPosLocal, config.highlightCurrentColor(), config.currentTileBorderWidth());
         }
 
-        if (config.currentTileBelowPlayer() && client.isGpu())
+        if (config.overlaysBelowPlayer() && client.isGpu())
         {
             removeActor(graphics, client.getLocalPlayer());
+        }
+        if (config.overlaysBelowNPCs())
+        {
+            for (NPC npc : plugin.getOnTopNpcs())
+            {
+                removeActor(graphics, npc);
+            }
         }
         return null;
     }
@@ -224,9 +234,23 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         int[] x2d = new int[vCount];
         int[] y2d = new int[vCount];
 
-        int localX = actor.getLocalLocation().getX();
-        int localY = actor.getLocalLocation().getY();
-        int localZ = Perspective.getTileHeight(client, client.getLocalPlayer().getLocalLocation(), client.getPlane());
+        int size = 1;
+        if (actor instanceof NPC){
+            NPCComposition composition = ((NPC)actor).getTransformedComposition();
+            if (composition != null)
+            {
+                size = composition.getSize();
+            }
+        }
+
+        final LocalPoint lp = actor.getLocalLocation();
+
+        final int localX = lp.getX();
+        final int localY = lp.getY();
+        final int northEastX = lp.getX() + Perspective.LOCAL_TILE_SIZE * (size - 1) / 2;
+        final int northEastY = lp.getY() + Perspective.LOCAL_TILE_SIZE * (size - 1) / 2;
+        final LocalPoint northEastLp = new LocalPoint(northEastX, northEastY);
+        int localZ = Perspective.getTileHeight(client, northEastLp, client.getPlane());
         int rotation = actor.getCurrentOrientation();
 
         Perspective.modelToCanvas(client, vCount, localX, localY, localZ, rotation, x3d, z3d, y3d, x2d, y2d);
