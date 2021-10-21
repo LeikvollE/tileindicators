@@ -27,6 +27,8 @@ package io.leikvolle.tileindicators;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.util.Comparator;
+import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import javax.inject.Inject;
 
@@ -43,8 +45,7 @@ import net.runelite.client.ui.overlay.OverlayUtil;
 import net.runelite.client.util.ImageUtil;
 
 @Slf4j
-public class ImprovedTileIndicatorsOverlay extends Overlay
-{
+public class ImprovedTileIndicatorsOverlay extends Overlay {
     private final Client client;
     private final ImprovedTileIndicatorsConfig config;
     private final BufferedImage ARROW_ICON;
@@ -100,20 +101,19 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
             }
         }
 
+        final WorldPoint playerPos = client.getLocalPlayer().getWorldLocation();
+        if (playerPos == null)
+        {
+            return null;
+        }
+        final LocalPoint playerPosLocal = LocalPoint.fromWorld(client, playerPos);
+        if (playerPosLocal == null)
+        {
+            return null;
+        }
+
         if (config.highlightCurrentTile())
         {
-            final WorldPoint playerPos = client.getLocalPlayer().getWorldLocation();
-            if (playerPos == null)
-            {
-                return null;
-            }
-
-            final LocalPoint playerPosLocal = LocalPoint.fromWorld(client, playerPos);
-            if (playerPosLocal == null)
-            {
-                return null;
-            }
-
             renderTile(graphics, playerPosLocal, config.highlightCurrentColor(), config.currentTileBorderWidth());
         }
 
@@ -123,8 +123,8 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         }
         if (config.overlaysBelowNPCs())
         {
-            for (NPC npc : plugin.getOnTopNpcs())
-            {
+            // Limits the number of npcs drawn below overlays, ranks the NPCs by distance to player.
+            for (NPC npc : plugin.getOnTopNpcs().stream().sorted(Comparator.comparingInt(npc -> npc.getLocalLocation().distanceTo(playerPosLocal))).limit(config.maxNPCsDrawn()).collect(Collectors.toSet())) {
                 removeActor(graphics, npc);
             }
         }
@@ -156,11 +156,11 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         {
             return;
         }
-        double size = 0.65*(Math.min(5.0, client.getGameCycle()-gameCycle)/5.0);
+        double size = 0.65 * (Math.min(5.0, client.getGameCycle() - gameCycle) / 5.0);
 
         final Polygon poly = getCanvasTargetTileAreaPoly(client, dest, size, client.getPlane(), 10);
         final Polygon shadow = getCanvasTargetTileAreaPoly(client, dest, size, client.getPlane(), 0);
-        Point canvasLoc = Perspective.getCanvasImageLocation(client, dest, ARROW_ICON, 150 + (int)(20 * Math.sin(client.getGameCycle()/10.0)));
+        Point canvasLoc = Perspective.getCanvasImageLocation(client, dest, ARROW_ICON, 150 + (int) (20 * Math.sin(client.getGameCycle() / 10.0)));
 
         if (poly != null)
         {
@@ -177,8 +177,8 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         if (canvasLoc != null && drawArrow && shadow != null)
         {
             // TODO: improve scale as you zoom out
-            double imageScale = 0.8*Math.min(client.get3dZoom()/500.0, 1);
-            graphics.drawImage(ARROW_ICON, (int)(shadow.getBounds().width/2+shadow.getBounds().x-ARROW_ICON.getWidth()*imageScale/2), canvasLoc.getY(), (int)(ARROW_ICON.getWidth()*imageScale),(int)(ARROW_ICON.getHeight()*imageScale), null);
+            double imageScale = 0.8 * Math.min(client.get3dZoom() / 500.0, 1);
+            graphics.drawImage(ARROW_ICON, (int) (shadow.getBounds().width / 2 + shadow.getBounds().x - ARROW_ICON.getWidth() * imageScale / 2), canvasLoc.getY(), (int) (ARROW_ICON.getWidth() * imageScale), (int) (ARROW_ICON.getHeight() * imageScale), null);
         }
 
     }
@@ -203,7 +203,7 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         final int height = Perspective.getTileHeight(client, localLocation, plane) - zOffset;
 
         for (int i = 0; i < resolution; i++) {
-            double angle = ((float)i/resolution)*2*Math.PI;
+            double angle = ((float) i / resolution) * 2 * Math.PI;
             double offsetX = Math.cos(angle);
             double offsetY = Math.sin(angle);
             int x = (int) (localLocation.getX() + (offsetX * Perspective.LOCAL_TILE_SIZE * size));
@@ -219,8 +219,11 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         return poly;
     }
 
-    private void removeActor(final Graphics2D graphics, final Actor actor)
-    {
+    private void removeActor(final Graphics2D graphics, final Actor actor) {
+        final int clipX1 = client.getViewportXOffset();
+        final int clipY1 = client.getViewportYOffset();
+        final int clipX2 = client.getViewportWidth() + clipX1;
+        final int clipY2 = client.getViewportHeight() + clipY1;
         Object origAA = graphics.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
         graphics.setRenderingHint(
                 RenderingHints.KEY_ANTIALIASING,
@@ -235,8 +238,9 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         int[] y2d = new int[vCount];
 
         int size = 1;
-        if (actor instanceof NPC){
-            NPCComposition composition = ((NPC)actor).getTransformedComposition();
+        if (actor instanceof NPC)
+        {
+            NPCComposition composition = ((NPC) actor).getTransformedComposition();
             if (composition != null)
             {
                 size = composition.getSize();
@@ -255,6 +259,19 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
 
         Perspective.modelToCanvas(client, vCount, localX, localY, localZ, rotation, x3d, z3d, y3d, x2d, y2d);
 
+        boolean anyVisible = false;
+
+        for (int i = 0; i < vCount; i++) {
+            int x = x2d[i];
+            int y = y2d[i];
+
+            boolean visibleX = x >= clipX1 && x < clipX2;
+            boolean visibleY = y >= clipY1 && y < clipY2;
+            anyVisible |= visibleX && visibleY;
+        }
+
+        if (!anyVisible) return;
+
         int tCount = model.getTrianglesCount();
         int[] tx = model.getTrianglesX();
         int[] ty = model.getTrianglesY();
@@ -265,12 +282,13 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
         graphics.setColor(Color.WHITE);
         for (int i = 0; i < tCount; i++) {
             // Cull tris facing away from the camera
-            if (getTriDirection(x2d[tx[i]], y2d[tx[i]], x2d[ty[i]], y2d[ty[i]], x2d[tz[i]], y2d[tz[i]]) >= 0){
+            if (getTriDirection(x2d[tx[i]], y2d[tx[i]], x2d[ty[i]], y2d[ty[i]], x2d[tz[i]], y2d[tz[i]]) >= 0)
+            {
                 continue;
             }
             Polygon p = new Polygon(
-                    new int[]{x2d[tx[i]],x2d[ty[i]],x2d[tz[i]]},
-                    new int[]{y2d[tx[i]],y2d[ty[i]],y2d[tz[i]]},
+                    new int[]{x2d[tx[i]], x2d[ty[i]], x2d[tz[i]]},
+                    new int[]{y2d[tx[i]], y2d[ty[i]], y2d[tz[i]]},
                     3);
             graphics.fill(p);
 

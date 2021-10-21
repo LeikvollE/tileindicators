@@ -195,11 +195,23 @@ public interface ImprovedTileIndicatorsConfig extends Config
 	}
 
 	@ConfigItem(
+			keyName = "maxNPCsDrawn",
+			name = "NPC limit",
+			description = "The number of NPCs in the scene at a time to be affected by this plugin. Will affect FPS.",
+			section = npcIndicatorsSection,
+			position = 13
+	)
+	@Range(
+			max = 20
+	)
+	default int maxNPCsDrawn() {return 10;}
+
+	@ConfigItem(
 			keyName = "topNPCs",
 			name = "NPCs to draw on top",
 			description = "List of NPCs to draw above overlays. To add NPCs, shift right-click them and click Draw-Above.",
 			section = npcIndicatorsSection,
-			position = 13
+			position = 14
 	)
 	default String getTopNPCs()
 	{
