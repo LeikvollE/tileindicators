@@ -158,65 +158,31 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 
 		if (menuAction == MenuAction.EXAMINE_NPC && client.isKeyPressed(KeyCode.KC_SHIFT) && config.overlaysBelowNPCs())
 		{
-			// Add tag and tag-all options
-			final int id = event.getIdentifier();
-			final NPC[] cachedNPCs = client.getCachedNPCs();
-			final NPC npc = cachedNPCs[id];
-
-			if (npc == null || npc.getName() == null)
-			{
-				return;
-			}
-
-			final String npcName = npc.getName();
+			final String npcName = getNameForCachedNPC(event.getIdentifier());
+			if (npcName == null) return;
 			boolean matchesList = onTopNPCNames.stream()
 					.filter(highlight -> !highlight.equalsIgnoreCase(npcName))
 					.anyMatch(highlight -> WildcardMatcher.matches(highlight, npcName));
 
-			MenuEntry[] menuEntries = client.getMenuEntries();
-
 			// Only show draw options to npcs not affected by a wildcard entry, as wildcards will not be removed by menu options
 			if (!matchesList)
 			{
-				menuEntries = Arrays.copyOf(menuEntries, menuEntries.length + 1);
-				final MenuEntry tagAllEntry = menuEntries[menuEntries.length - 1] = new MenuEntry();
-				tagAllEntry.setOption(onTopNPCNames.stream().anyMatch(npcName::equalsIgnoreCase) ? DRAW_BELOW : DRAW_ABOVE);
-				tagAllEntry.setTarget(event.getTarget());
-				tagAllEntry.setParam0(event.getActionParam0());
-				tagAllEntry.setParam1(event.getActionParam1());
-				tagAllEntry.setIdentifier(event.getIdentifier());
-				tagAllEntry.setType(MenuAction.RUNELITE.getId());
+				client.createMenuEntry(-1)
+					.setOption(onTopNPCNames.stream().anyMatch(npcName::equalsIgnoreCase) ? DRAW_BELOW : DRAW_ABOVE)
+					.setTarget(event.getTarget())
+					.setIdentifier(event.getIdentifier())
+					.setType(MenuAction.RUNELITE)
+					.onClick(this::toggleDraw);
 			}
-
-			client.setMenuEntries(menuEntries);
 		}
 	}
 
-	@Subscribe
-	public void onMenuOptionClicked(MenuOptionClicked click)
+	public void toggleDraw(MenuEntry click)
 	{
-		if (click.getMenuAction() != MenuAction.RUNELITE ||
-				!(click.getMenuOption().equals(DRAW_BELOW) || click.getMenuOption().equals(DRAW_ABOVE) || click.getMenuOption().equals(UNTAG_ALL)))
-		{
-			return;
-		}
-		final int id = click.getId();
-		final NPC[] cachedNPCs = client.getCachedNPCs();
-		final NPC npc = cachedNPCs[id];
-
-		if (npc == null || npc.getName() == null)
-		{
-			return;
-		}
-
-		final String name = npc.getName();
-
-		// Remove if we are untagging all, stops confusion
-		if (click.getMenuOption().equals(UNTAG_ALL) && !onTopNPCNames.contains(name)) return;
+		final String name = getNameForCachedNPC(click.getIdentifier());
+		if (name == null) return;
 		// this trips a config change which triggers the overlay rebuild
 		updateNpcsToDrawAbove(name);
-
-		click.consume();
 	}
 
 	private void updateNpcsToDrawAbove(String npc)
@@ -282,6 +248,19 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 		}
 
 		return false;
+	}
+
+	private String getNameForCachedNPC(int id)
+	{
+		final NPC[] cachedNPCs = client.getCachedNPCs();
+		final NPC npc = cachedNPCs[id];
+
+		if (npc == null)
+		{
+			return null;
+		}
+
+		return npc.getName();
 	}
 
 }

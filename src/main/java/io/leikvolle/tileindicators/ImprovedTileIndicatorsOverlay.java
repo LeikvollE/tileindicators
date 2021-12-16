@@ -272,10 +272,10 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
 
         if (!anyVisible) return;
 
-        int tCount = model.getTrianglesCount();
-        int[] tx = model.getTrianglesX();
-        int[] ty = model.getTrianglesY();
-        int[] tz = model.getTrianglesZ();
+        int tCount = model.getFaceCount();
+        int[] tx = model.getFaceIndices1();
+        int[] ty = model.getFaceIndices2();
+        int[] tz = model.getFaceIndices3();
 
         Composite orig = graphics.getComposite();
         graphics.setComposite(AlphaComposite.Clear);
