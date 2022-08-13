@@ -39,6 +39,7 @@ import static net.runelite.api.MenuAction.MENU_ACTION_DEPRIORITIZE_OFFSET;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.PluginChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.eventbus.Subscribe;
@@ -116,6 +117,14 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 		}
 
 		clientThread.invoke(this::rebuild);
+	}
+
+	@Subscribe
+	public void onPluginChanged(PluginChanged pluginChanged) {
+		// Makes sure the overlay is above all medium priority overlays and below all high priority overlays.
+		// Otherwise, drawing order is inconsistent.
+		overlayManager.remove(overlay);
+		overlayManager.add(overlay);
 	}
 
 	@Subscribe

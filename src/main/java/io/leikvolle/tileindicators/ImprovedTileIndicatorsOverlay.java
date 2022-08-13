@@ -41,7 +41,6 @@ import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayPriority;
-import net.runelite.client.ui.overlay.OverlayUtil;
 import net.runelite.client.util.ImageUtil;
 
 @Slf4j
@@ -52,6 +51,13 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
     @Inject
     private ImprovedTileIndicatorsPlugin plugin;
 
+    private final BufferedImage ARROW_ICON;
+
+    private LocalPoint lastDestination;
+    private LocalPoint lastlastDestination;
+    private int spawnGameCycle;
+    private int despawnGameCycle;
+
     @Inject
     private ImprovedTileIndicatorsOverlay(Client client, ImprovedTileIndicatorsConfig config)
     {
@@ -59,7 +65,9 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
         this.config = config;
         setPosition(OverlayPosition.DYNAMIC);
         setLayer(OverlayLayer.ABOVE_SCENE);
-        setPriority(OverlayPriority.HIGH);
+        setPriority(OverlayPriority.MED);
+
+        ARROW_ICON = ImageUtil.loadImageResource(ImprovedTileIndicatorsPlugin.class, "arrow.png");
     }
 
     @Override
@@ -77,6 +85,31 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
             return null;
         }
 
+        if (config.customDestinationTile()) {
+            if (lastDestination != null && !lastDestination.equals(client.getLocalDestinationLocation())) {
+                lastlastDestination = lastDestination;
+                despawnGameCycle = client.getGameCycle();
+            }
+            if (lastDestination == null || !lastDestination.equals(client.getLocalDestinationLocation()))
+            {
+                if(client.getLocalDestinationLocation() != null) {
+                    spawnGameCycle = client.getGameCycle();
+                }
+                lastDestination = client.getLocalDestinationLocation();
+            }
+            switch (config.highlightDestinationStyle())
+            {
+                case RS3:
+                    renderRS3Tile(graphics, lastDestination, config.highlightDestinationColor(), true, true);
+                    renderRS3Tile(graphics, lastlastDestination, config.highlightDestinationColor(), false, false);
+                    break;
+                case RS3_NO_ARROW:
+                    renderRS3Tile(graphics, lastDestination, config.highlightDestinationColor(), false, true);
+                    renderRS3Tile(graphics, lastlastDestination, config.highlightDestinationColor(), false, false);
+                    break;
+            }
+        }
+
         if (config.overlaysBelowPlayer() && client.isGpu())
         {
             removeActor(graphics, client.getLocalPlayer());
@@ -89,6 +122,84 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
             }
         }
         return null;
+    }
+
+    private void renderRS3Tile(final Graphics2D graphics, final LocalPoint dest, final Color color, boolean drawArrow, boolean appearing)
+    {
+        if (dest == null)
+        {
+            return;
+        }
+
+        double size;
+        if (appearing) {
+            size = 0.65 * (Math.min(7.0, client.getGameCycle() - spawnGameCycle) / 7.0);
+        } else {
+            size = 0.65 * ((7 - (client.getGameCycle() - despawnGameCycle)) / 7.0);
+        }
+
+        if (size < 0) return;
+
+
+        final Polygon poly = getCanvasTargetTileCirclePoly(client, dest, size, client.getPlane(), 10);
+        final Polygon shadow = getCanvasTargetTileCirclePoly(client, dest, size, client.getPlane(), 0);
+        Point canvasLoc = Perspective.getCanvasImageLocation(client, dest, ARROW_ICON, 150 + (int) (20 * Math.sin(client.getGameCycle() / 10.0)));
+
+        if (poly != null)
+        {
+
+            final Stroke originalStroke = graphics.getStroke();
+            graphics.setStroke(new BasicStroke((float) config.destinationTileBorderWidth()));
+            graphics.setColor(new Color(0x8D000000, true));
+            graphics.draw(shadow);
+            graphics.setColor(color);
+            graphics.draw(poly);
+            graphics.setStroke(originalStroke);
+        }
+
+        if (canvasLoc != null && drawArrow && shadow != null)
+        {
+            // TODO: improve scale as you zoom out
+            double imageScale = 0.8 * Math.min(client.get3dZoom() / 500.0, 1);
+            graphics.drawImage(ARROW_ICON, (int) (shadow.getBounds().width / 2 + shadow.getBounds().x - ARROW_ICON.getWidth() * imageScale / 2), canvasLoc.getY(), (int) (ARROW_ICON.getWidth() * imageScale), (int) (ARROW_ICON.getHeight() * imageScale), null);
+        }
+
+    }
+
+    public static Polygon getCanvasTargetTileCirclePoly(
+            @Nonnull Client client,
+            @Nonnull LocalPoint localLocation,
+            double size,
+            int plane,
+            int zOffset)
+    {
+        final int sceneX = localLocation.getSceneX();
+        final int sceneY = localLocation.getSceneY();
+
+        if (sceneX < 0 || sceneY < 0 || sceneX >= Perspective.SCENE_SIZE || sceneY >= Perspective.SCENE_SIZE)
+        {
+            return null;
+        }
+
+        Polygon poly = new Polygon();
+        int resolution = 64;
+        final int height = Perspective.getTileHeight(client, localLocation, plane) - zOffset;
+
+        for (int i = 0; i < resolution; i++) {
+            double angle = ((float) i / resolution) * 2 * Math.PI;
+            double offsetX = Math.cos(angle);
+            double offsetY = Math.sin(angle);
+            int x = (int) (localLocation.getX() + (offsetX * Perspective.LOCAL_TILE_SIZE * size));
+            int y = (int) (localLocation.getY() + (offsetY * Perspective.LOCAL_TILE_SIZE * size));
+            Point p = Perspective.localToCanvas(client, x, y, height);
+            if (p == null) {
+                continue;
+            }
+            poly.addPoint(p.getX(), p.getY());
+
+        }
+
+        return poly;
     }
 
     private void removeActor(final Graphics2D graphics, final Actor actor) {
