@@ -52,7 +52,7 @@ import java.util.*;
 @PluginDescriptor(
 		name = "Improved Tile Indicators",
 		description = "An improved version of the tile indicators plugin",
-		tags = {"highlight", "overlay"}
+		tags = {"rs3", "overlay", "tile", "indicators"}
 )
 @Slf4j
 public class ImprovedTileIndicatorsPlugin extends Plugin
