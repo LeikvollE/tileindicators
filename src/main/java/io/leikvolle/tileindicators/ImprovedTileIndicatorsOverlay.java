@@ -114,7 +114,7 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
         {
             removeActor(graphics, client.getLocalPlayer());
         }
-        if (config.overlaysBelowNPCs())
+        if (config.overlaysBelowNPCs() && client.isGpu())
         {
             // Limits the number of npcs drawn below overlays, ranks the NPCs by distance to player.
             for (NPC npc : plugin.getOnTopNpcs().stream().sorted(Comparator.comparingInt(npc -> npc.getLocalLocation().distanceTo(playerPosLocal))).limit(config.maxNPCsDrawn()).collect(Collectors.toSet())) {
