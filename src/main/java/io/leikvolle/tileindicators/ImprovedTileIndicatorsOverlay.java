@@ -260,6 +260,8 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
         int[] ty = model.getFaceIndices2();
         int[] tz = model.getFaceIndices3();
 
+        final byte[] triangleTransparencies = model.getFaceTransparencies();
+
         Composite orig = graphics.getComposite();
         graphics.setComposite(AlphaComposite.Clear);
         graphics.setColor(Color.WHITE);
@@ -269,12 +271,13 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
             {
                 continue;
             }
-            Polygon p = new Polygon(
-                    new int[]{x2d[tx[i]], x2d[ty[i]], x2d[tz[i]]},
-                    new int[]{y2d[tx[i]], y2d[ty[i]], y2d[tz[i]]},
-                    3);
-            graphics.fill(p);
-
+            if (triangleTransparencies == null || (triangleTransparencies[i] & 255) < 254) {
+                Polygon p = new Polygon(
+                        new int[]{x2d[tx[i]], x2d[ty[i]], x2d[tz[i]]},
+                        new int[]{y2d[tx[i]], y2d[ty[i]], y2d[tz[i]]},
+                        3);
+                graphics.fill(p);
+            }
         }
         graphics.setComposite(orig);
         graphics.setRenderingHint(
