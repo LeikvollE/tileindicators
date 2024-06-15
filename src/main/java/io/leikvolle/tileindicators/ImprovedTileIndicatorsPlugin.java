@@ -120,14 +120,6 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onPluginChanged(PluginChanged pluginChanged) {
-		// Makes sure the overlay is above all medium priority overlays and below all high priority overlays.
-		// Otherwise, drawing order is inconsistent.
-		overlayManager.remove(overlay);
-		overlayManager.add(overlay);
-	}
-
-	@Subscribe
 	public void onNpcSpawned(NpcSpawned npcSpawned)
 	{
 		final NPC npc = npcSpawned.getNpc();

@@ -65,7 +65,7 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
         this.config = config;
         setPosition(OverlayPosition.DYNAMIC);
         setLayer(OverlayLayer.ABOVE_SCENE);
-        setPriority(OverlayPriority.MED);
+        setPriority(0.6f);
 
         ARROW_ICON = ImageUtil.loadImageResource(ImprovedTileIndicatorsPlugin.class, "arrow.png");
     }
@@ -213,9 +213,9 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
                 RenderingHints.VALUE_ANTIALIAS_OFF);
         Model model = actor.getModel();
         int vCount = model.getVerticesCount();
-        int[] x3d = model.getVerticesX();
-        int[] y3d = model.getVerticesY();
-        int[] z3d = model.getVerticesZ();
+        float[] x3d = model.getVerticesX();
+        float[] y3d = model.getVerticesY();
+        float[] z3d = model.getVerticesZ();
 
         int[] x2d = new int[vCount];
         int[] y2d = new int[vCount];
