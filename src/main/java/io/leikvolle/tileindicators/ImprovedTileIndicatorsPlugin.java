@@ -252,8 +252,7 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 
 	private String getNameForCachedNPC(int id)
 	{
-		final NPC[] cachedNPCs = client.getCachedNPCs();
-		final NPC npc = cachedNPCs[id];
+		final NPC npc = client.getTopLevelWorldView().npcs().byIndex(id);
 
 		if (npc == null)
 		{
