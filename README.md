@@ -1,4 +1,5 @@
 # Improved Tile Indicators
+Forked from [LeikvollE/tileindicators](https://github.com/LeikvollE/tileindicators).
 An improved version of tile indicators
 
 ## Features
