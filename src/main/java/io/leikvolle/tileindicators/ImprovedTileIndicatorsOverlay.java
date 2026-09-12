@@ -56,7 +56,6 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
     private final Client client;
     private final ImprovedTileIndicatorsConfig config;
     private final ActorOverlayMask actorMask;
-    private final RendererSupport rendererSupport = new RendererSupport();
     private final BufferedImage arrowIcon;
     @Inject private ImprovedTileIndicatorsPlugin plugin;
     @Inject private RenderedActors renderedActors;
@@ -135,16 +134,9 @@ public class ImprovedTileIndicatorsOverlay extends Overlay
 
     private void maskActor(Actor actor)
     {
-        if (rendererSupport.hasObjectCallbacks(client.getDrawCallbacks()))
-        {
-            if (!renderedActors.isVisible(actor, renderCallbackManager)) return;
-        }
-        else
-        {
-            // Legacy renderers do not report final object submissions. Preserve
-            // their existing masks while still honoring entity-hiding filters.
-            if (!renderCallbackManager.addEntity(actor, false)) return;
-        }
+        // Only submitted characters can safely mask overlays. Renderers without
+        // object callbacks cannot provide the visibility information required.
+        if (!renderedActors.isVisible(actor, renderCallbackManager)) return;
         int height = ActorHeight.get(client, actor);
         if (height != ActorHeight.UNAVAILABLE)
             actorMask.addActor(actor, height, actor == client.getLocalPlayer() ? null : plugin.getActorMaskAdmission());
