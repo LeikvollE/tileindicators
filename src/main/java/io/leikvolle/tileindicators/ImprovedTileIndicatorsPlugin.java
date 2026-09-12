@@ -40,6 +40,8 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.PluginChanged;
+import net.runelite.client.events.ProfileChanged;
+import net.runelite.client.callback.RenderCallbackManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.eventbus.Subscribe;
@@ -71,13 +73,26 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	@Inject
 	private ClientThread clientThread;
 
+	@Inject
+	private RenderCallbackManager renderCallbackManager;
+
+	@Inject
+	private RenderedActors renderedActors;
+
 	@Getter(AccessLevel.PACKAGE)
-	private final Set<NPC> onTopNpcs = new HashSet<>();
+	private final Set<NPC> onTopNpcs = Collections.newSetFromMap(new IdentityHashMap<>());
 	private List<String> onTopNPCNames = new ArrayList<>();
+
+	@Getter(AccessLevel.PACKAGE)
+	private final NearestActors nearestActors = new NearestActors();
+
+	@Getter(AccessLevel.PACKAGE)
+	private final ActorMaskAdmission actorMaskAdmission = new ActorMaskAdmission();
+	private final LootOverlayOrder lootOverlayOrder = new LootOverlayOrder();
+	private volatile boolean started;
 
 	private static final String DRAW_ABOVE = "Draw-Above";
 	private static final String DRAW_BELOW = "Draw-Below";
-	private static final String UNTAG_ALL = "Un-tag-All";
 
 	@Provides
 	ImprovedTileIndicatorsConfig provideConfig(ConfigManager configManager)
@@ -88,35 +103,126 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		started = true;
+		nearestActors.clear();
+		actorMaskAdmission.clear();
+		renderedActors.beginFrame(null, Collections.emptySet());
+		renderCallbackManager.register(renderedActors);
 		overlayManager.add(overlay);
-		clientThread.invoke(this::rebuild);
+		clientThread.invoke(() -> {
+			if (!started) return;
+			updateLootOverlayOrder();
+			rebuild();
+		});
 	}
 
 	@Override
 	protected void shutDown()
 	{
-		overlayManager.remove(overlay);
+		synchronized (overlayManager)
+		{
+			started = false;
+			lootOverlayOrder.restore();
+			// Removing our overlay also rebuilds the restored draw order.
+			overlayManager.remove(overlay);
+		}
+		renderCallbackManager.unregister(renderedActors);
+		nearestActors.clear();
+		actorMaskAdmission.clear();
+		renderedActors.beginFrame(null, Collections.emptySet());
+		onTopNpcs.clear();
+		overlay.release();
+	}
+
+	private void updateLootOverlayOrder()
+	{
+		synchronized (overlayManager)
+		{
+			if (!started || !lootOverlayOrder.update(overlayManager, config.keepLootAboveCharacters())) return;
+			// Priority setters do not re-sort RuneLite's overlay lists. Re-add
+			// only our overlay to rebuild them without touching item settings.
+			overlayManager.remove(overlay);
+			overlayManager.add(overlay);
+		}
+	}
+
+	@Subscribe
+	public void onPluginChanged(PluginChanged event)
+	{
+		clientThread.invoke(this::updateLootOverlayOrder);
+	}
+
+	@Subscribe
+	public void onProfileChanged(ProfileChanged event)
+	{
+		clientThread.invoke(this::updateLootOverlayOrder);
+	}
+
+	@Subscribe
+	public void onBeforeRender(BeforeRender event)
+	{
+		boolean maskEnabled = client.isGpu() && config.overlayOpacity() < 100;
+		Player local = client.getLocalPlayer();
+		boolean allNpcsEnabled = maskEnabled && config.overlaysBelowAllNPCs();
+		boolean namedNpcsEnabled = maskEnabled && config.overlaysBelowNPCs() && !onTopNpcs.isEmpty();
+		boolean othersEnabled = maskEnabled && config.overlaysBelowOtherPlayers();
+		if (allNpcsEnabled || namedNpcsEnabled || othersEnabled)
+		{
+			nearestActors.select(local, namedNpcsEnabled ? onTopNpcs : Collections.emptySet(),
+					allNpcsEnabled || othersEnabled ? client.getTopLevelWorldView() : null,
+					othersEnabled, allNpcsEnabled, config.maxNPCsDrawn());
+		}
+		else nearestActors.clear();
+		actorMaskAdmission.beginFrame(nearestActors);
+		renderedActors.beginFrame(maskEnabled && config.overlaysBelowPlayer() ? local : null, nearestActors.selected());
 	}
 
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
-		if (event.getGameState() == GameState.LOGIN_SCREEN ||
-				event.getGameState() == GameState.HOPPING)
+		if (event.getGameState() != GameState.LOGGED_IN)
 		{
-			onTopNpcs.clear();
+			nearestActors.clear();
+			actorMaskAdmission.clear();
+			renderedActors.beginFrame(null, Collections.emptySet());
+			overlay.reset();
 		}
+		if (event.getGameState() == GameState.LOGIN_SCREEN || event.getGameState() == GameState.HOPPING)
+			onTopNpcs.clear();
+		else if (event.getGameState() == GameState.LOGGED_IN) rebuild();
+	}
+
+	@Subscribe
+	public void onWorldViewLoaded(WorldViewLoaded event)
+	{
+		clientThread.invoke(this::rebuild);
+	}
+
+	@Subscribe
+	public void onWorldViewUnloaded(WorldViewUnloaded event)
+	{
+		WorldView world = event.getWorldView();
+		clientThread.invoke(() -> {
+			nearestActors.clear();
+			actorMaskAdmission.clear();
+			onTopNpcs.removeIf(npc -> npc.getWorldView() == null || npc.getWorldView() == world);
+			overlay.resetWorld(world);
+		});
 	}
 
 	@Subscribe
 	public void onConfigChanged(ConfigChanged configChanged)
 	{
-		if (!configChanged.getGroup().equals("improvedtileindicators"))
+		if (!"improvedtileindicators".equals(configChanged.getGroup()))
 		{
 			return;
 		}
 
-		clientThread.invoke(this::rebuild);
+		clientThread.invoke(() -> {
+			if (!started) return;
+			updateLootOverlayOrder();
+			rebuild();
+		});
 	}
 
 	@Subscribe
@@ -145,6 +251,15 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 
 
 	@Subscribe
+	public void onNpcChanged(NpcChanged event)
+	{
+		NPC npc = event.getNpc();
+		String name = npc.getName();
+		if (name != null && onTopMatchesNPCName(name)) onTopNpcs.add(npc);
+		else onTopNpcs.remove(npc);
+	}
+
+	@Subscribe
 	public void onMenuEntryAdded(MenuEntryAdded event)
 	{
 		int type = event.getType();
@@ -158,7 +273,8 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 
 		if (menuAction == MenuAction.EXAMINE_NPC && client.isKeyPressed(KeyCode.KC_SHIFT) && config.overlaysBelowNPCs())
 		{
-			final String npcName = getNameForCachedNPC(event.getIdentifier());
+			final int worldViewId = event.getMenuEntry().getWorldViewId();
+			final String npcName = getNameForCachedNPC(event.getIdentifier(), worldViewId);
 			if (npcName == null) return;
 			boolean matchesList = onTopNPCNames.stream()
 					.filter(highlight -> !highlight.equalsIgnoreCase(npcName))
@@ -171,6 +287,7 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 					.setOption(onTopNPCNames.stream().anyMatch(npcName::equalsIgnoreCase) ? DRAW_BELOW : DRAW_ABOVE)
 					.setTarget(event.getTarget())
 					.setIdentifier(event.getIdentifier())
+					.setWorldViewId(worldViewId)
 					.setType(MenuAction.RUNELITE)
 					.onClick(this::toggleDraw);
 			}
@@ -179,7 +296,7 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 
 	public void toggleDraw(MenuEntry click)
 	{
-		final String name = getNameForCachedNPC(click.getIdentifier());
+		final String name = getNameForCachedNPC(click.getIdentifier(), click.getWorldViewId());
 		if (name == null) return;
 		// this trips a config change which triggers the overlay rebuild
 		updateNpcsToDrawAbove(name);
@@ -202,39 +319,38 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	{
 		final String configNpcs = config.getTopNPCs();
 
-		if (configNpcs.isEmpty())
+		if (configNpcs == null || configNpcs.trim().isEmpty())
 		{
 			return Collections.emptyList();
 		}
 
-		return Text.fromCSV(configNpcs);
+		List<String> names = new ArrayList<>();
+		for (String name : Text.fromCSV(configNpcs))
+		{
+			String trimmed = name.trim();
+			if (!trimmed.isEmpty()) names.add(trimmed);
+		}
+		return names;
 	}
 
 	void rebuild()
 	{
 		onTopNPCNames = getTopNPCs();
 		onTopNpcs.clear();
+		if (client.getGameState() == GameState.LOGGED_IN || client.getGameState() == GameState.LOADING)
+			rebuildWorld(client.getTopLevelWorldView());
+	}
 
-		if (client.getGameState() != GameState.LOGGED_IN &&
-				client.getGameState() != GameState.LOADING)
+	private void rebuildWorld(WorldView world)
+	{
+		if (world == null) return;
+		for (NPC npc : world.npcs())
 		{
-			return;
+			if (npc == null) continue;
+			String name = npc.getName();
+			if (name != null && onTopMatchesNPCName(name)) onTopNpcs.add(npc);
 		}
-
-		for (NPC npc : client.getNpcs())
-		{
-			final String npcName = npc.getName();
-
-			if (npcName == null)
-			{
-				continue;
-			}
-
-			if (onTopMatchesNPCName(npcName))
-			{
-				onTopNpcs.add(npc);
-			}
-		}
+		for (WorldView child : world.worldViews()) rebuildWorld(child);
 	}
 
 	private boolean onTopMatchesNPCName(String npcName)
@@ -250,9 +366,11 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 		return false;
 	}
 
-	private String getNameForCachedNPC(int id)
+	private String getNameForCachedNPC(int id, int worldViewId)
 	{
-		final NPC npc = client.getTopLevelWorldView().npcs().byIndex(id);
+		final WorldView world = client.getWorldView(worldViewId);
+		if (world == null || id < 0) return null;
+		final NPC npc = world.npcs().byIndex(id);
 
 		if (npc == null)
 		{
