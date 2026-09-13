@@ -32,32 +32,6 @@ import net.runelite.client.config.*;
 @ConfigGroup("improvedtileindicators")
 public interface ImprovedTileIndicatorsConfig extends Config
 {
-    @Range(min = 0, max = 100)
-    @Units(Units.PERCENT)
-    @ConfigItem(
-            keyName = "overlayOpacity",
-            name = "Overlay opacity",
-            description = "How much of an overlay remains visible over enabled characters: 0% hides it, 100% keeps its original opacity. Applies to your player, other players, and all or specific NPCs.",
-            position = -3
-    )
-    default int overlayOpacity() { return 0; }
-
-    @ConfigItem(
-            keyName = "keepLootAboveCharacters",
-            name = "Loot above characters",
-            description = "Keep Ground Items and Loot Filters overlays above players and NPCs, including their labels, timers, icons and item tile highlights. Other overlays still follow the character settings.",
-            position = -1
-    )
-    default boolean keepLootAboveCharacters() { return false; }
-
-    @ConfigItem(
-            keyName = "maxNPCsDrawn",
-            name = "Character limit",
-            description = "Maximum NPCs and other players affected together. Prioritizes listed NPCs, your opponents, known bosses, then other NPCs in combat; distance breaks ties. Your own character is separate. Set to 0 to disable both groups.",
-            position = -2
-    )
-    @Range(max = NearestActors.MAX_LIMIT)
-    default int maxNPCsDrawn() { return 100; }
 
 	@ConfigSection(
 			name = "Player Tile indicators",
@@ -78,19 +52,10 @@ public interface ImprovedTileIndicatorsConfig extends Config
 		return true;
 	}
 
-    @ConfigItem(
-            keyName = "otherPlayersBelowOverlays",
-            name = "Draw overlays below other players",
-            description = "Requires GPU. Draws overlays below nearby other players, sharing the Character limit with NPCs.",
-            section = tileIndicatorsSection,
-            position = 2
-    )
-    default boolean overlaysBelowOtherPlayers() { return true; }
-
 	@ConfigSection(
 			name = "Destination Tile",
 			description = "Settings for modifying the destination tile",
-			position = 2
+			position = 1
 	)
 	String destinationTileSection = "destinationTileSection";
 
@@ -137,25 +102,16 @@ public interface ImprovedTileIndicatorsConfig extends Config
 	@ConfigSection(
 			name = "NPC Indicators",
 			description = "Settings enhancing the standard NPC indicators",
-			position = 1
+			position = 2
 	)
 	String npcIndicatorsSection = "npcIndicatorsSection";
 
-    @ConfigItem(
-            keyName = "allNpcsBelowOverlays",
-            name = "Draw overlays below all NPCs",
-            description = "Requires GPU. Includes all nearby NPCs, sharing the Character limit with other players. Listed NPCs, your opponents, known bosses and other NPCs in combat take priority.",
-            section = npcIndicatorsSection,
-            position = 6
-    )
-    default boolean overlaysBelowAllNPCs() { return true; }
-
 	@ConfigItem(
 			keyName = "overlaysBelowNPCs",
-			name = "Draw overlays below specific NPCs",
-			description = "Requires GPU. Draws overlays below the named NPCs and gives them first priority within the shared Character limit, including when all NPCs are enabled.",
+			name = "Draw overlays below NPCs",
+			description = "Requires GPU. Draws overlays below specified NPCs. CAUTION: Will make your game laggy if many NPCs are drawn above overlay at once. Best used for bosses, not large groups of NPCs.",
 			section = npcIndicatorsSection,
-			position = 7
+			position = 6
 	)
 	default boolean overlaysBelowNPCs()
 	{
@@ -163,9 +119,21 @@ public interface ImprovedTileIndicatorsConfig extends Config
 	}
 
 	@ConfigItem(
+			keyName = "maxNPCsDrawn",
+			name = "NPC limit",
+			description = "The number of NPCs in the scene at a time to be affected by this plugin. Will affect FPS.",
+			section = npcIndicatorsSection,
+			position = 7
+	)
+	@Range(
+			max = 20
+	)
+	default int maxNPCsDrawn() {return 10;}
+
+	@ConfigItem(
 			keyName = "topNPCs",
 			name = "NPCs to draw on top",
-			description = "NPCs given first priority when specific NPCs are enabled. To add NPCs, shift right-click them and click Draw-Above.",
+			description = "List of NPCs to draw above overlays. To add NPCs, shift right-click them and click Draw-Above.",
 			section = npcIndicatorsSection,
 			position = 8
 	)
@@ -173,15 +141,6 @@ public interface ImprovedTileIndicatorsConfig extends Config
 	{
 		return "";
 	}
-
-    @ConfigItem(
-            keyName = "excludedBosses",
-            name = "Excluded bosses",
-            description = "Comma-separated boss names to keep overlays visible over. Exclusions override all NPCs, named NPCs and combat priority. Names ignore case; * wildcards are supported. Blank excludes nothing.",
-            section = npcIndicatorsSection,
-            position = 9
-    )
-    default String excludedBosses() { return ""; }
 
 	@ConfigItem(
 			keyName = "topNPCs",
