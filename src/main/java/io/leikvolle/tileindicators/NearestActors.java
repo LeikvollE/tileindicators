@@ -46,12 +46,18 @@ final class NearestActors
     private final int[] orders = new int[MAX_LIMIT];
     private final Set<Actor> selected = Collections.newSetFromMap(new IdentityHashMap<>());
     private final float[] playerPoint = new float[3], actorPoint = new float[3];
+    private final NpcExclusions npcExclusions = new NpcExclusions();
     private Player localPlayer;
     private Actor localTarget;
     private LocalPoint origin;
     private WorldView playerWorld;
     private boolean mainOrigin;
     private int limit, count, sequence;
+
+    void setExcludedNpcs(String names)
+    {
+        npcExclusions.setNames(names);
+    }
 
     void select(Player local, Iterable<NPC> namedNpcs, WorldView world,
                 boolean includePlayers, boolean includeAllNpcs, int requestedLimit)
@@ -100,6 +106,8 @@ final class NearestActors
     private void add(Actor actor, int priority)
     {
         if (actor == null || actor == localPlayer || selected.contains(actor)) return;
+        // Exclusions override named/combat/boss priority before using a slot or model.
+        if (actor instanceof NPC && npcExclusions.matches(((NPC) actor).getName())) return;
         LocalPoint location = actor.getLocalLocation();
         WorldView world = actor.getWorldView();
         if (location == null || world == null) return;

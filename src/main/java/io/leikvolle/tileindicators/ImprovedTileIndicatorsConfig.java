@@ -174,6 +174,15 @@ public interface ImprovedTileIndicatorsConfig extends Config
 		return "";
 	}
 
+    @ConfigItem(
+            keyName = "excludedBosses",
+            name = "Excluded bosses",
+            description = "Comma-separated boss names to keep overlays visible over. Exclusions override all NPCs, named NPCs and combat priority. Names ignore case; * wildcards are supported. Blank excludes nothing.",
+            section = npcIndicatorsSection,
+            position = 9
+    )
+    default String excludedBosses() { return ""; }
+
 	@ConfigItem(
 			keyName = "topNPCs",
 			name = "",

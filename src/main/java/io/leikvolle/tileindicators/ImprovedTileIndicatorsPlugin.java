@@ -161,6 +161,7 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	@Subscribe
 	public void onBeforeRender(BeforeRender event)
 	{
+		nearestActors.setExcludedNpcs(config.excludedBosses());
 		boolean maskEnabled = client.isGpu() && config.overlayOpacity() < 100;
 		Player local = client.getLocalPlayer();
 		boolean allNpcsEnabled = maskEnabled && config.overlaysBelowAllNPCs();
