@@ -40,6 +40,7 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.PluginChanged;
+import net.runelite.client.events.PluginMessage;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.eventbus.Subscribe;
@@ -78,6 +79,56 @@ public class ImprovedTileIndicatorsPlugin extends Plugin
 	private static final String DRAW_ABOVE = "Draw-Above";
 	private static final String DRAW_BELOW = "Draw-Below";
 	private static final String UNTAG_ALL = "Un-tag-All";
+
+	// True Tile Movement Animations hides the player and draws its own model that follows the true tile.
+	// It publishes that model so "overlays below player" can cut out the model that is actually on screen.
+	private static final String TRUE_TILE_MOVEMENT_NAMESPACE = "true-tile-movement-animation";
+	private static final String TRUE_TILE_MOVEMENT_MODEL_LOCATION = "local-player-model-location";
+	private RuneLiteObject trueTileModel = null;
+	private int trueTileModelTick = -1;
+
+	@Subscribe
+	public void onPluginMessage(PluginMessage message)
+	{
+		if (!TRUE_TILE_MOVEMENT_NAMESPACE.equals(message.getNamespace())
+				|| !TRUE_TILE_MOVEMENT_MODEL_LOCATION.equals(message.getName()))
+		{
+			return;
+		}
+
+		final Object object = message.getData().get("runeLiteObject");
+		if (Boolean.TRUE.equals(message.getData().get("active")) && object instanceof RuneLiteObject)
+		{
+			trueTileModel = (RuneLiteObject) object;
+			trueTileModelTick = client.getTickCount();
+		}
+		else
+		{
+			trueTileModel = null;
+		}
+	}
+
+	/**
+	 * The model True Tile Movement Animations is drawing in place of the local player, or null when the
+	 * real player is the one on screen (plugin not installed, turned off, or showing the original model).
+	 */
+	RuneLiteObject getTrueTileModel()
+	{
+		final RuneLiteObject model = trueTileModel;
+		// The message is re-sent at least once per game tick, anything older is stale.
+		if (model == null || client.getTickCount() - trueTileModelTick > 2)
+		{
+			return null;
+		}
+
+		final Player player = client.getLocalPlayer();
+		if (player == null || !model.isActive() || model.getModel() == null
+				|| model.getWorldView() != player.getLocalLocation().getWorldView())
+		{
+			return null;
+		}
+		return model;
+	}
 
 	@Provides
 	ImprovedTileIndicatorsConfig provideConfig(ConfigManager configManager)
