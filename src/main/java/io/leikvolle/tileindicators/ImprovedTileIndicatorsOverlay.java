@@ -112,7 +112,17 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
 
         if (config.overlaysBelowPlayer() && client.isGpu())
         {
-            removePlayer(graphics, client.getLocalPlayer());
+            final RuneLiteObject trueTileModel = plugin.getTrueTileModel();
+            if (trueTileModel != null)
+            {
+                // The player is hidden and this model is drawn instead, so this is the shape to cut out
+                removeModel(graphics, trueTileModel.getModel(), trueTileModel.getX(), trueTileModel.getY(),
+                        trueTileModel.getZ(), trueTileModel.getOrientation());
+            }
+            else
+            {
+                removePlayer(graphics, client.getLocalPlayer());
+            }
         }
         if (config.overlaysBelowNPCs() && client.isGpu())
         {
@@ -213,6 +223,11 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
     }
 
     private void removeActor(final Graphics2D graphics, final Actor actor, final int localZ) {
+        final LocalPoint lp = actor.getLocalLocation();
+        removeModel(graphics, actor.getModel(), lp.getX(), lp.getY(), localZ, actor.getCurrentOrientation());
+    }
+
+    private void removeModel(final Graphics2D graphics, final Model model, final int localX, final int localY, final int localZ, final int rotation) {
         final int clipX1 = client.getViewportXOffset();
         final int clipY1 = client.getViewportYOffset();
         final int clipX2 = client.getViewportWidth() + clipX1;
@@ -221,7 +236,6 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
         graphics.setRenderingHint(
                 RenderingHints.KEY_ANTIALIASING,
                 RenderingHints.VALUE_ANTIALIAS_OFF);
-        Model model = actor.getModel();
         int vCount = model.getVerticesCount();
         float[] x3d = model.getVerticesX();
         float[] y3d = model.getVerticesY();
@@ -229,13 +243,6 @@ public class ImprovedTileIndicatorsOverlay extends Overlay {
 
         int[] x2d = new int[vCount];
         int[] y2d = new int[vCount];
-
-        final LocalPoint lp = actor.getLocalLocation();
-
-        final int localX = lp.getX();
-        final int localY = lp.getY();
-
-        int rotation = actor.getCurrentOrientation();
 
         Perspective.modelToCanvas(client, vCount, localX, localY, localZ, rotation, x3d, z3d, y3d, x2d, y2d);
 
